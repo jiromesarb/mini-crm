@@ -63,7 +63,6 @@
                                     <img src="{{ asset('storage/' . $company->logo) }}" width="300">
                                 </div>
 
-
                             </form>
                         </div>
                     </div>

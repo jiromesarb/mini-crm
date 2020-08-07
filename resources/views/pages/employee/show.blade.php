@@ -58,7 +58,6 @@
                                     <label>{!! nullable($employee->company->name) !!}</label>
                                 </div>
 
-
                             </form>
                         </div>
                     </div>

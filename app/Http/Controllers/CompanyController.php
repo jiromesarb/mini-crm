@@ -94,7 +94,6 @@ class CompanyController extends Controller
     public function update(Request $request, $id)
     {
         // Validate Request
-
         $v = $this->validateCompany($request->all(), 'update', $id);
 		if ($v->fails()) return back()->withInput()->withErrors($v->errors());
 
