@@ -1,0 +1,9 @@
+/* .fa { */
+    /* color: white !important; */
+/* } */
+
+.dropdown-toggle:after { content: none }
+
+/* .dropdown-menu {
+    left: 0 !important;
+} */
