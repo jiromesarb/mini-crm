@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Traits\CompanyTrait;
+use Auth;
+use Session;
+use Validator;
+use DateTime;
+use Image;
+use Storage;
+
+use App\Company;
 use Illuminate\Http\Request;
 
 class CompanyController extends Controller
 {
-
-    use CompanyTrait;
 
     /**
      * Display a listing of the resource.
@@ -17,7 +22,7 @@ class CompanyController extends Controller
      */
     public function index()
     {
-        $companies = $this->getCompanies();
+        $companies = Company::with(['employees'])->orderBy('id', 'desc')->paginate(10);
         return view('pages.company.index', compact('companies'));
     }
 
@@ -40,11 +45,29 @@ class CompanyController extends Controller
     public function store(Request $request)
     {
         // Validate Request
-        $v = $this->validateCompany($request->all());
+        $v = Validator::make($request->all(), [
+            'name' => 'required|unique:companies,name',
+            'email' => 'email|nullable|unique:companies,email',
+            'logo' => 'mimes:jpeg,jpg,png,gif|min:100|dimensions:min_width=250,min_height=500',
+        ]);
 		if ($v->fails()) return back()->withInput()->withErrors($v->errors());
 
+        $company = $request->except(['_token', 'logo']);
+
+        // Save the logo
+        if($request->hasFile('logo')) {
+            $image = $request->file('logo');
+            $orig_name = pathinfo($image->getClientOriginalName(), PATHINFO_FILENAME); // Get original name without file extension
+            $fileName = $orig_name . '_' . time() . '.' . $image->getClientOriginalExtension(); // add unique string to file name
+            $img = Image::make($image->getRealPath());
+            $img->stream(); // <-- Key point
+
+            Storage::disk('local')->put('public/' . $fileName, $img, 'public'); // Store the logo here
+            $company['logo'] = $fileName;
+        }
+
         // Store Company
-        if ($this->storeCompany($request)) {
+        if (Company::create($company)) {
             return back()->with([
                 'notif.style' => 'success',
                 'notif.icon' => 'plus-circle',
@@ -68,7 +91,7 @@ class CompanyController extends Controller
      */
     public function show($id)
     {
-        $company = $this->showCompany($id);
+        $company = Company::where('id', $id)->first();
         return view('pages.company.show', compact('company'));
     }
 
@@ -80,7 +103,7 @@ class CompanyController extends Controller
      */
     public function edit($id)
     {
-        $company = $this->editCompany($id);
+        $company = Company::where('id', $id)->first();
         return view('pages.company.edit', compact('company'));
     }
 
@@ -94,11 +117,38 @@ class CompanyController extends Controller
     public function update(Request $request, $id)
     {
         // Validate Request
-        $v = $this->validateCompany($request->all(), 'update', $id);
+        $v = Validator::make($request->all(), [
+            'name' => 'required|unique:companies,name,' . $id,
+            'email' => 'email|nullable|unique:companies,email,' . $id,
+            'logo' => 'mimes:jpeg,jpg,png,gif|min:100|dimensions:min_width=250,min_height=500',
+        ]);
 		if ($v->fails()) return back()->withInput()->withErrors($v->errors());
 
+        $getCompany = Company::where('id', $id)->first();
+        $company = $request->except(['_token', '_method', 'logo']);
+
+		// Update the logo
+		if($request->hasFile('logo')) {
+            $image = $request->file('logo');
+			$orig_name = pathinfo($image->getClientOriginalName(), PATHINFO_FILENAME); // Get original name without file extension
+            $fileName = $orig_name . '_' . time() . '.' . $image->getClientOriginalExtension(); // add unique string to file name
+            $img = Image::make($image->getRealPath());
+            $img->stream(); // <-- Key point
+
+			Storage::disk('local')->put('public/' . $fileName, $img, 'public'); // Store logo here
+			$company['logo'] = $fileName;
+
+			// Remove old logo
+            if(!empty($getCompany->logo)) {
+				$unlink_resume = Storage::disk('public')->exists($getCompany->logo);
+                if($unlink_resume){
+                    Storage::disk('public')->delete($getCompany->logo);
+                }
+            }
+		}
+
         // Update Company
-        if ($this->updateCompany($id, $request)) {
+        if ($getCompany->update($company)) {
             return back()->with([
                 'notif.style' => 'success',
                 'notif.icon' => 'plus-circle',
@@ -122,7 +172,17 @@ class CompanyController extends Controller
      */
     public function destroy($id)
     {
-        if ($this->deleteCompany($id)) {
+        $company = Company::where('id', $id)->first();
+
+		// Delete Company Logo
+		if(!empty($company->logo)) {
+			$unlink_resume = Storage::disk('public')->exists($company->logo);
+			if($unlink_resume){
+				Storage::disk('public')->delete($company->logo);
+			}
+		}
+
+        if ($company->delete()) {
             return back()->with([
                 'notif.style' => 'success',
                 'notif.icon' => 'plus-circle',

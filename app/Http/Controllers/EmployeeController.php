@@ -2,12 +2,19 @@
 
 namespace App\Http\Controllers;
 
-use App\Traits\EmployeeTrait;
+use Auth;
+use Session;
+use Validator;
+use DateTime;
+use Image;
+use Storage;
+
+use App\Company;
+use App\Employee;
 use Illuminate\Http\Request;
 
 class EmployeeController extends Controller
 {
-    use EmployeeTrait;
 
     /**
      * Display a listing of the resource.
@@ -16,7 +23,7 @@ class EmployeeController extends Controller
      */
     public function index()
     {
-        $employees = $this->getEmployees();
+        $employees = Employee::with(['company'])->orderBy('id', 'desc')->paginate(10);
         return view('pages.employee.index', compact('employees'));
     }
 
@@ -27,7 +34,7 @@ class EmployeeController extends Controller
      */
     public function create()
     {
-        $companies = $this->getCompanyList();
+        $companies = Company::orderBy('id', 'desc')->get();
 
         return view('pages.employee.create', compact('companies'));
     }
@@ -41,11 +48,18 @@ class EmployeeController extends Controller
     public function store(Request $request)
     {
         // Validate Request
-        $v = $this->validateEmployee($request->all());
+        $v = Validator::make($request->all(), [
+            'first_name' => 'required',
+            'last_name' => 'required',
+            'email' => 'email|nullable|unique:employees,email',
+            'phone' => 'unique:employees,phone',
+        ]);
 		if ($v->fails()) return back()->withInput()->withErrors($v->errors());
 
+        $employee = $request->except(['_token']);
+
         // Store Employee
-        if ($this->storeEmployee($request)) {
+        if (Employee::create($employee)) {
             return back()->with([
                 'notif.style' => 'success',
                 'notif.icon' => 'plus-circle',
@@ -69,7 +83,7 @@ class EmployeeController extends Controller
      */
     public function show($id)
     {
-        $employee = $this->showEmployee($id);
+        $employee = Employee::with('company')->where('id', $id)->first();
 
         return view('pages.employee.show', compact('employee'));
     }
@@ -82,8 +96,8 @@ class EmployeeController extends Controller
      */
     public function edit($id)
     {
-        $employee = $this->editEmployee($id);
-        $companies = $this->getCompanyList();
+        $employee = Employee::with('company')->where('id', $id)->first();
+        $companies = Company::orderBy('id', 'desc')->get();
 
         return view('pages.employee.edit', compact('employee', 'companies'));
     }
@@ -98,11 +112,19 @@ class EmployeeController extends Controller
     public function update(Request $request, $id)
     {
         // Validate Request
-        $v = $this->validateEmployee($request->all(), 'update', $id);
+        $v = Validator::make($request->all(), [
+            'first_name' => 'required',
+            'last_name' => 'required',
+            'email' => 'email|nullable|unique:employees,email,' . $id,
+            'phone' => 'unique:employees,phone,' . $id,
+        ]);
 		if ($v->fails()) return back()->withInput()->withErrors($v->errors());
 
+        $employee = $request->except(['_token', '_method']);
+        $getEmployee = Employee::where('id', $id)->first();
+
         // Update Company
-        if ($this->updateEmployee($id, $request)) {
+        if ($getEmployee->update($employee)) {
             return back()->with([
                 'notif.style' => 'success',
                 'notif.icon' => 'plus-circle',
@@ -126,7 +148,8 @@ class EmployeeController extends Controller
      */
     public function destroy($id)
     {
-        if ($this->deleteEmployee($id)) {
+        $employee = Employee::where('id', $id)->first();
+        if ($employee->delete()) {
             return back()->with([
                 'notif.style' => 'success',
                 'notif.icon' => 'plus-circle',
